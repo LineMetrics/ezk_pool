@@ -24,18 +24,12 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-   Ps =
-   %% ezk server pool
-   [
-   poolboy:child_spec(?EZK_POOL_NAME,
-      [
-         {name, {local, ?EZK_POOL_NAME}},
-         {size, 5},
-         {max_overflow, 10},
-         {worker_module, ezk_pool_worker},
-         {strategy, fifo}
-      ]
-      , [])
-   ]
-   ,
-   {ok, { {one_for_one, 5, 10}, Ps} }.
+   Pools = application:get_all_env(ezk_pool),
+   Pools1 = proplists:delete(included_applications, Pools),
+   PoolSpec = lists:map(
+      fun ({PoolName, PoolArgs}) ->
+         ezk_pool:child_spec(PoolName, PoolArgs)
+      end,
+      Pools1
+   ),
+   {ok, { {one_for_one, 15, 15}, PoolSpec} }.
