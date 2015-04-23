@@ -52,9 +52,6 @@ start_link(Args) ->
    {stop, Reason :: term()} | ignore).
 init(_Args) ->
    {ok, EPid} = ezk:start_connection(),
-   process_flag(trap_exit, true),
-%%    link(EPid),
-%%    {ok, EPid1} = ezk_connection:start_link([]),
    {ok, #state{conn = EPid}}.
 
 %%--------------------------------------------------------------------
@@ -75,9 +72,7 @@ init(_Args) ->
 %% write some data to a zk-node, ensure the node exists
 handle_call({write_data, Path, Data}, _From, #state{conn = Conn} = State)
                                                           when is_list(Path) andalso is_binary(Data) ->
-   lager:debug("write data ~p to path ~p",[Data, Path]),
-   Ens = ezk:ensure_path(Conn, Path),
-   lager:debug("ensure path :~p gives: ~p",[Path, Ens]),
+   ezk:ensure_path(Conn, Path),
    Res = ezk:set(Conn, Path, Data),
    {reply, Res, State};
 %% delete a node, if it has no children
@@ -91,13 +86,15 @@ handle_call({delete_node_all, Path}, _From, #state{conn = Conn} = State) when is
 %% read a nodes content
 handle_call({get, Path}, _From, #state{conn = Conn} = State) when is_list(Path) ->
    Res = ezk:get(Conn, Path),
-   {reply, {Res, self()}, State};
+   {reply, Res, State};
 %% read a nodes content and set a watch on the path
 handle_call({get_watch, Path, Watcher, WatchName}, _From, #state{conn = Conn} = State) when is_list(Path) ->
    Res = ezk:get(Conn, Path, Watcher, WatchName),
    {reply, Res, State};
+handle_call({ezk, EzkFun, Args}, _From, #state{conn = Conn} = State) ->
+   Res = erlang:apply(ezk, EzkFun, [Conn|Args]),
+   {reply, Res, State};
 handle_call(_Request, _From, State) ->
-   lager:warning("Undefined call in ezk_worker ~p",[_Request]),
    {reply, ok, State}.
 
 
@@ -130,7 +127,6 @@ handle_cast(_Request, State) ->
    {noreply, NewState :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term(), NewState :: #state{}}).
 handle_info(_Info, State) ->
-   lager:debug("ezk_pool_worker GOT INFO: ~p",[_Info]),
    {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -147,7 +143,6 @@ handle_info(_Info, State) ->
 -spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
     State :: #state{}) -> term()).
 terminate(Reason, #state{conn = Conn}) ->
-   lager:debug("~p:terminate with Reason ~p",[?MODULE, Reason]),
    ezk:end_connection(Conn, Reason),
    ok.
 

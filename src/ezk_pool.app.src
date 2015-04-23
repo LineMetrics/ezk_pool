@@ -1,6 +1,6 @@
 {application, ezk_pool,
  [
-  {description, ""},
+  {description, "pooled ezk connections"},
   {vsn, "1"},
   {registered, []},
   {applications, [

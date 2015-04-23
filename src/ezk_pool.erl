@@ -4,14 +4,13 @@
 
 %% API
 -export([new/2, child_spec/2]).
--export([write/3, delete/2, delete_all/2, read/2, read_watch/3, read_watch/4]).
+-export([set/3, delete/2, delete_all/2, get/2, get_watch/3, get_watch/4, call/3]).
 
 -export([start/0]).
 
 %% start the app
 start() ->
    application:start(crypto),
-   lager:start(),
    application:start(ezk),
    application:start(poolboy),
    ok = application:start(ezk_pool).
@@ -28,7 +27,7 @@ child_spec(PoolName, PoolArgs) ->
 .
 
 %%%%%%%%%% worker
-write(PoolName, Path, Data) when is_binary(Data) ->
+set(PoolName, Path, Data) when is_binary(Data) ->
    poolboy:transaction(PoolName, fun(EzkWorker) ->
       gen_server:call(EzkWorker, {write_data, path(Path), Data})
    end).
@@ -43,17 +42,24 @@ delete_all(PoolName, Path) ->
       gen_server:call(EzkWorker, {delete_node_all, path(Path)})
    end).
 
-read(PoolName, Path) ->
+get(PoolName, Path) ->
    poolboy:transaction(PoolName, fun(EzkWorker) ->
       gen_server:call(EzkWorker, {get, path(Path)})
    end).
 
-read_watch(PoolName, Path, WatchName) ->
-   read_watch(PoolName, Path, self(), WatchName).
+get_watch(PoolName, Path, WatchName) ->
+   get_watch(PoolName, Path, self(), WatchName).
 
-read_watch(PoolName, Path, Watcher, WatchName) ->
+get_watch(PoolName, Path, Watcher, WatchName) ->
    poolboy:transaction(PoolName, fun(EzkWorker) ->
       gen_server:call(EzkWorker, {get_watch, path(Path), Watcher, WatchName})
+   end).
+
+%% @doc Call any function from the ezk module with some Arguments
+%% provide the Arguments-List without the Connection Pid
+call(PoolName, FunctionName, Args) when is_atom(FunctionName) andalso is_list(Args) ->
+   poolboy:transaction(PoolName, fun(EzkWorker) ->
+      gen_server:call(EzkWorker, {ezk, FunctionName, Args})
    end).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
