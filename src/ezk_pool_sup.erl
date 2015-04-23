@@ -2,7 +2,6 @@
 
 -behaviour(supervisor).
 
--include("ezk_pool.hrl").
 %% API
 -export([start_link/0]).
 
