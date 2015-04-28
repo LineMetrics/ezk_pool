@@ -52,6 +52,7 @@ start_link(Args) ->
    {stop, Reason :: term()} | ignore).
 init(_Args) ->
    {ok, EPid} = ezk:start_connection(),
+   link(EPid),
    {ok, #state{conn = EPid}}.
 
 %%--------------------------------------------------------------------
@@ -143,7 +144,7 @@ handle_info(_Info, State) ->
 -spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
     State :: #state{}) -> term()).
 terminate(Reason, #state{conn = Conn}) ->
-   ezk:end_connection(Conn, Reason),
+   catch ezk:end_connection(Conn, Reason),
    ok.
 
 %%--------------------------------------------------------------------
