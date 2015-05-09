@@ -23,6 +23,23 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
+   Processes = [
+   % ETS Table Manager =
+      {ets_manager,
+         {ets_manager, start_link, []},
+         permanent, 5000, worker, dynamic},
+
+   % Watcher-Pool-Watcher =
+      {pool_watcher,
+         {pool_watcher, start_link, []},
+         permanent, 5000, worker, dynamic},
+
+      % Watcher-Pool-Watcher =
+      {client_watcher,
+         {client_watcher, start_link, []},
+         permanent, 5000, worker, dynamic}
+   ],
+
    Pools = application:get_all_env(ezk_pool),
    Pools1 = proplists:delete(included_applications, Pools),
    PoolSpec = lists:map(
@@ -31,4 +48,5 @@ init([]) ->
       end,
       Pools1
    ),
-   {ok, { {one_for_one, 15, 15}, PoolSpec} }.
+
+   {ok, { {one_for_one, 15, 15}, Processes ++ PoolSpec} }.

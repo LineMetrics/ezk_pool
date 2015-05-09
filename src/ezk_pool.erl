@@ -3,7 +3,7 @@
 -author("Alexander Minichmair").
 
 %% API
--export([new/2, child_spec/2]).
+-export([new/2, child_spec/2, setup_get_watch/3]).
 -export([set/3, delete/2, delete_all/2, get/2, get_watch/3, get_watch/4, call/3]).
 
 -export([start/0]).
@@ -54,7 +54,11 @@ get_watch(PoolName, Path, Watcher, WatchName) ->
    poolboy:transaction(PoolName, fun(EzkWorker) ->
       gen_server:call(EzkWorker, {get_watch, path(Path), Watcher, WatchName})
    end).
-
+setup_get_watch(PoolName, Path, WatchName) ->
+   poolboy:transaction(PoolName, fun(EzkWorker) ->
+      gen_server:cast(pool_watcher, {new_watch, EzkWorker}),
+      gen_server:call(EzkWorker, {setup_get_watch, Path, WatchName})
+   end).
 %% @doc Call any function from the ezk module with some Arguments
 %% provide the Arguments-List without the Connection Pid
 call(PoolName, FunctionName, Args) when is_atom(FunctionName) andalso is_list(Args) ->

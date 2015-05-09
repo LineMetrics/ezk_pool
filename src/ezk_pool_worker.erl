@@ -4,6 +4,8 @@
 
 -behaviour(gen_server).
 
+-include("../include/ezk_pool.hrl").
+
 %% API
 -export([start_link/1]).
 
@@ -17,8 +19,11 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {conn}).
+-record(state, {conn, watches :: set(), callback_url}).
 
+%% -record(db_watcher_pid, {pid, path, worker_pid}).
+%% -record(db_watcher_base, {basepath, pid, worker_pid}).
+%% -record(db_watcher_path, {path, pid, handler_pid}).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -51,9 +56,9 @@ start_link(Args) ->
    {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term()} | ignore).
 init(_Args) ->
-   {ok, EPid} = ezk:start_connection(),
-   link(EPid),
-   {ok, #state{conn = EPid}}.
+   EPid = init_conn(),
+   Set = sets:new(),
+   {ok, #state{conn = EPid, watches = Set}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -90,12 +95,46 @@ handle_call({get, Path}, _From, #state{conn = Conn} = State) when is_list(Path) 
    {reply, Res, State};
 %% read a nodes content and set a watch on the path
 handle_call({get_watch, Path, Watcher, WatchName}, _From, #state{conn = Conn} = State) when is_list(Path) ->
-   Res = ezk:get(Conn, Path, Watcher, WatchName),
+   {ok, Res} = watch_path(Conn, Path, Watcher, WatchName),
    {reply, Res, State};
+   %%
+%%
+handle_call({setup_get_watch, Path, WatchName}, {ClientPid, _Tag}, #state{conn = Conn} = State) ->
+
+   ?LOG("~nsetup_get_watch with ~p~n",[{Path, WatchName}]),
+   gen_server:cast(client_watcher, {new_watch, ClientPid}),
+
+   %% check for valid watcher process
+   {Data, NewState} =
+   case ets:lookup(path_watcher, Path) of
+      [{Path, WatcherPid}] ->
+         %% make sure existing worker is alive
+         case is_process_alive(WatcherPid) of
+            true  ->
+                     true = lets:insert_list(client_paths, ClientPid, Path),
+                     true = lets:insert_list(path_clients, Path, ClientPid),
+                     {ok, Data0} = ezk:get(Conn, Path),
+                     ?LOG("living watcher found for path (~p)  no need to set watch~n",[Path]),
+                     {Data0, State};
+
+            false -> {ok,Data1}  = start_watch(Conn, Path, ClientPid), {Data1, State}
+         end;
+      _Nope                ->
+         {ok, Data2} = start_watch(Conn, Path, ClientPid),
+         {Data2, State}
+   end,
+   {reply, {ok,Data}, NewState}
+;
+%% takeover watches form an old process
+handle_call({takeover, OldPid}, _From, State) ->
+   ?LOG("~nTAKEOVER ALL WATCHES FROM PID: ~p to pid: ~p~n",[OldPid, self()]),
+   rewatch_all(State#state.conn, OldPid),
+   {reply, ok, State};
 handle_call({ezk, EzkFun, Args}, _From, #state{conn = Conn} = State) ->
    Res = erlang:apply(ezk, EzkFun, [Conn|Args]),
    {reply, Res, State};
 handle_call(_Request, _From, State) ->
+   ?LOG("unhandled call in ezk_pool_worker~n"),
    {reply, ok, State}.
 
 
@@ -127,7 +166,64 @@ handle_cast(_Request, State) ->
    {noreply, NewState :: #state{}} |
    {noreply, NewState :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term(), NewState :: #state{}}).
+%%%%%%%%%%%%%%%%%%%%%%%%
+%% zookeeper connection is down, reconnect and rewatch all basepaths
+handle_info({'DOWN', _MonitorRef, process, Object, _Info}, State) ->
+   %% start a new ezk connection
+   ?LOG("Zookeeper Connection is 'DOWN' (monitored process(ezk)) ~p", [Object]),
+   NewConnPid = init_conn(),
+   NewState = State#state{conn  = NewConnPid},
+   rewatch_all(NewConnPid, self()),
+   {noreply, NewState};
+
+%% watch message data_changed
+handle_info(M={_WatchName, {Path, data_changed, _SyncCon}}, State) ->
+   ?LOG("Watcher::: ~p~n data has changed for path ~p (type: ~p)",[M, Path, data_changed]),
+   %% get_data and rewatch
+   %% inform interested pids
+   maybe_rewatch(State#state.conn, Path),
+   {noreply, State};
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% the zk-watch is lost
+%% eventually re-watch
+handle_info({watchlost, WM, {Type, Path}}, #state{conn = ConnectionPid}=State) ->
+   ?LOG("Zookeeper-Watch lost for path ~p, Type: ~p, WatchMessage: ~p", [Path, Type, WM]),
+
+   %% if the connection process is dead, then we do nothing, because a 'DOWN' message will arrive
+   %% soon after this one and a new connection has to be established anyways
+
+   case is_process_alive(ConnectionPid) of
+      true ->
+               maybe_rewatch(ConnectionPid, Path);
+
+      false -> %% do nothing
+               ok
+   end,
+   {noreply, State};
+%% zookeeper node deleted !!
+handle_info(_M = {_WatchName, {Path, node_deleted, _SyncCon}}, State) ->
+   ?LOG("zookeeper node deleted (~p) ",[Path]),
+   %% inform clients
+   PathClients = lets:read_list(path_clients, Path),
+   [Pid ! {node_deleted, Path} || Pid <- PathClients],
+   %% delete from client tables
+   ets:delete(path_clients, Path),
+   lets:delete_from_lists(client_paths, PathClients, Path),
+   %%
+   %% delete path watcher entry (not a list)
+   ets:delete(path_watcher, Path),
+   %% get all watchers for this path ..
+   PathsAll = lets:read_list(watcher_paths, self()),
+   %% .. and write back the list with Path excluded
+   ets:insert(watcher_paths, {self(), lists:delete(Path, PathsAll)}),
+
+   {noreply, State};
+handle_info(timeout, State) ->
+   ?LOG("timeout in ezk_pool_worker: ~p",[self()]),
+   {stop, timeout, State};
 handle_info(_Info, State) ->
+   ?LOG("unhandled INFO in ezk_pool_worker: ~p",[_Info]),
    {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -161,6 +257,81 @@ terminate(Reason, #state{conn = Conn}) ->
 code_change(_OldVsn, State, _Extra) ->
    {ok, State}.
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+init_conn() ->
+   {ok, EPid} = ezk:start_connection(),
+   _Monitor = erlang:monitor(process, EPid),
+   EPid.
+
+%% if we do not have any clients left for the path, do not start the watch
+maybe_rewatch(Conn, Path) ->
+   case lets:read_list(path_clients, Path) of
+      [] -> %% delete
+         ?LOG("no more clients left for path: ~p -> do not restart watch",[Path]),
+         ets:delete(path_watcher, Path),
+         PathsAll = lets:read_list(watcher_paths, self()),
+         ets:insert(watcher_paths, {self(), lists:delete(Path, PathsAll)}),
+         ok;
+      L ->
+         {ok, NewData} = start_watch(Conn, Path),
+         data_changed(Path, L, NewData)
+   end.
+
+%% start a new watch and store in client watches
+start_watch(Conn, Path, ClientPid) ->
+   {ok, Data} = start_watch(Conn, Path),
+   true = lets:insert_list(path_clients, Path, ClientPid),
+   true = lets:insert_list(client_paths, ClientPid, Path),
+   {ok, Data}.
+%% just start/restart a watch,
+%% not updating client ets-tables as everything else should stay the same
+start_watch(Conn, Path) ->
+   ?LOG("start new watch on path: ~p",[Path]),
+   ezk:ensure_path(Conn, Path),
+   {ok, Data1} = watch_path(Conn, Path, self()),
+   true = ets:insert(path_watcher,{Path, self()}),
+   true = lets:insert_list(watcher_paths, self(), Path),
+   {ok, Data1}.
+
+%% inform pids about new path-data
+data_changed(_Path, [], _NewData) ->
+   ok;
+data_changed(Path, Clients, NewData) ->
+   [(Pid ! {data_changed, Path, NewData}) || Pid <- Clients].
+data_changed(Path, NewData) ->
+   ClientWatchers = lets:read_list(path_clients, Path),
+   data_changed(Path, ClientWatchers, NewData).
+
+
+%% rewatch and send all data changed for all watches of a watcher-pid
+%% as a result of this action, the current (self()) process is then in charge of all
+%% the watches held by Pid so far
+rewatch_all(Conn, Pid) ->
+   PathList = lets:read_list(watcher_paths, Pid),
+   ?LOG("rewatch all : ~p",[PathList]),
+   %% first delete old entry for watcher_paths
+   ets:delete(watcher_paths, Pid),
+   Inform = fun(IPath) ->
+      {ok, NewData} = start_watch(Conn, IPath),
+      data_changed(IPath, NewData)
+   end,
+   ok = lists:foreach(Inform, PathList).
+
+%% watch a node for changes on zookeeper
+watch_path(ConnPid, Path, Watcher) ->
+   watch_path(ConnPid, Path, Watcher, Path)
+   .
+watch_path(ConnPid, Path, Watcher, WatchMessage) ->
+   ?LOG("watch path (~p, ~p, ~p)",[ConnPid, Path, Watcher]),
+   {ok, {Data, {getdata, _Czxid, _Mzxid, _Pzxid, _Ctime, _Mtime, _Dataversion,
+      _Datalength, _Number_children, _Cversion, _Aclversion, _Ephe_owner}}}
+      = ezk:get(ConnPid, Path, Watcher, WatchMessage),
+
+   {ok, Data}.
+
