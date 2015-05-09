@@ -16,7 +16,7 @@
 %% in tables: watcher_paths, client_paths, path_clients the value is a list
 %% and in table: path_watcher the value is the pool-workers pid
 %%
-%% members of the value-lists in the 3 named tables are unique
+%% members of the value-lists are unique
 %%
 %% this functions only cares about one thing: that values are lists
 %% they work with every key-type that works with ets
