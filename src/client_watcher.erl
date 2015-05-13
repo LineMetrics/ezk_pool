@@ -162,9 +162,11 @@ new_watch(true, _) ->
 
 clean_pid(ClientPid) ->
    catch erlang:demonitor(ClientPid,[flush]),
-   %% first get all paths for the client
+   %% drop client watchnames
+   ets:delete(client_path_name, ClientPid),
+   %% get all paths for the client
    PathList = lets:read_list(client_paths, ClientPid),
    %% delete clients paths
    ets:delete(client_paths, ClientPid),
-   %% delete all entries for ClientPid from path_clients for all paths for ClientPid
+   %% delete all entries for ClientPid from path_clients for all paths started with ClientPid
    lets:delete_from_lists(path_clients, PathList, ClientPid).

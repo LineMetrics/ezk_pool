@@ -58,6 +58,7 @@ init([]) ->
    PWatcher = ets:new(path_watcher, [set, public, named_table, {read_concurrency,true},{heir, self(), path_watcher} ]),
    _TWatches = ets:new(client_paths, [set, public, named_table, {read_concurrency,true},{heir, self(), client_paths} ]),
    _Client_path = ets:new(path_clients, [set, public, named_table, {read_concurrency,true},{heir, self(), path_clients} ]),
+   _ClientPathWatchName = ets:new(client_path_name, [set, public, named_table, {read_concurrency,true},{heir, self(), client_path_name} ]),
 
 %%    ets:give_away(TZkPid, Pid, none),
 %%    ets:give_away(TSess, Pid, none),

@@ -45,6 +45,7 @@ read_list(TableName, Key) ->
 delete_from_lists(TableName, KeyList, Value) ->
 %%    [delete_from_list(TableName, Key, Value) || Key <- KeyList],
    F = fun(Key) ->
+      %% do delete_from_list then check for empty list to delete
       delete_from_list(TableName, Key, Value),
       case read_list(TableName, Key) of
          [] -> %% delete whole entry
@@ -58,14 +59,12 @@ delete_from_lists(TableName, KeyList, Value) ->
 delete_from_list(TableName, Key, Value) ->
    delete_from_list(TableName, Key, read_list(TableName, Key), Value)
 .
-
 delete_from_list(_, _, [], _) ->
    true;
-delete_from_list(T, K, L, V) when is_list(L) ->
-   delete_from_list(lists:member(V, L), T, K, L, V)
+delete_from_list(T, K, List, Val) when is_list(List) ->
+   delete_from_list(lists:member(Val, List), T, K, List, Val)
 .
-
-delete_from_list(true, T, K, L, V) ->
-   ets:insert(T, {K, lists:delete(V, L)});
+delete_from_list(true, T, K, List, Val) ->
+   ets:insert(T, {K, lists:delete(Val, List)});
 delete_from_list(false, _, _, _, _) ->
    true.

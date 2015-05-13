@@ -111,16 +111,15 @@ handle_call({setup_get_watch, Path, WatchName}, {ClientPid, _Tag}, #state{conn =
          %% make sure existing worker is alive
          case is_process_alive(WatcherPid) of
             true  ->
-                     true = lets:insert_list(client_paths, ClientPid, Path),
-                     true = lets:insert_list(path_clients, Path, ClientPid),
+                     update_client_path(Path, ClientPid, WatchName),
                      {ok, Data0} = ezk:get(Conn, Path),
                      ?LOG("living watcher found for path (~p)  no need to set watch~n",[Path]),
                      {Data0, State};
 
-            false -> {ok,Data1}  = start_watch(Conn, Path, ClientPid), {Data1, State}
+            false -> {ok,Data1}  = start_watch(Conn, Path, ClientPid, WatchName), {Data1, State}
          end;
       _Nope                ->
-         {ok, Data2} = start_watch(Conn, Path, ClientPid),
+         {ok, Data2} = start_watch(Conn, Path, ClientPid, WatchName),
          {Data2, State}
    end,
    {reply, {ok,Data}, NewState}
@@ -202,11 +201,11 @@ handle_info({watchlost, WM, {Type, Path}}, #state{conn = ConnectionPid}=State) -
    end,
    {noreply, State};
 %% zookeeper node deleted !!
-handle_info(_M = {_WatchName, {Path, node_deleted, _SyncCon}}, State) ->
+handle_info(_M = {WatchName, {Path, node_deleted, _SyncCon}}, State) ->
    ?LOG("zookeeper node deleted (~p) ",[Path]),
    %% inform clients
    PathClients = lets:read_list(path_clients, Path),
-   [Pid ! {node_deleted, Path} || Pid <- PathClients],
+   [Pid ! {node_deleted, WatchName, Path} || Pid <- PathClients],
    %% delete from client tables
    ets:delete(path_clients, Path),
    lets:delete_from_lists(client_paths, PathClients, Path),
@@ -271,23 +270,24 @@ init_conn() ->
 
 %% if we do not have any clients left for the path, do not start the watch
 maybe_rewatch(Conn, Path) ->
-   case lets:read_list(path_clients, Path) of
-      [] -> %% delete
-         ?LOG("no more clients left for path: ~p -> do not restart watch",[Path]),
+   Clients = lets:read_list(path_clients, Path),
+   IsWatcher = lists:member(Path, lets:read_list(watcher_paths, self())),
+   case {Clients, IsWatcher} of
+      {_C, _Is} when Clients =:= [] orelse IsWatcher =:= false -> %% delete
+         ?LOG("no more clients left for path or self() is not watcher: ~p -> do not restart watch",[Path]),
          ets:delete(path_watcher, Path),
          PathsAll = lets:read_list(watcher_paths, self()),
          ets:insert(watcher_paths, {self(), lists:delete(Path, PathsAll)}),
          ok;
-      L ->
+      {L, true} ->
          {ok, NewData} = start_watch(Conn, Path),
          data_changed(Path, L, NewData)
    end.
 
 %% start a new watch and store in client watches
-start_watch(Conn, Path, ClientPid) ->
+start_watch(Conn, Path, ClientPid, WatchName) ->
    {ok, Data} = start_watch(Conn, Path),
-   true = lets:insert_list(path_clients, Path, ClientPid),
-   true = lets:insert_list(client_paths, ClientPid, Path),
+   update_client_path(Path, ClientPid, WatchName),
    {ok, Data}.
 %% just start/restart a watch,
 %% not updating client ets-tables as everything else should stay the same
@@ -303,11 +303,7 @@ start_watch(Conn, Path) ->
 data_changed(_Path, [], _NewData) ->
    ok;
 data_changed(Path, Clients, NewData) ->
-   [(Pid ! {data_changed, Path, NewData}) || Pid <- Clients].
-data_changed(Path, NewData) ->
-   ClientWatchers = lets:read_list(path_clients, Path),
-   data_changed(Path, ClientWatchers, NewData).
-
+   [(Pid ! {data_changed, watch_name(Pid, Path), Path, NewData}) || Pid <- Clients].
 
 %% rewatch and send all data changed for all watches of a watcher-pid
 %% as a result of this action, the current (self()) process is then in charge of all
@@ -316,11 +312,8 @@ rewatch_all(Conn, Pid) ->
    PathList = lets:read_list(watcher_paths, Pid),
    ?LOG("rewatch all : ~p",[PathList]),
    %% first delete old entry for watcher_paths
-   ets:delete(watcher_paths, Pid),
-   Inform = fun(IPath) ->
-      {ok, NewData} = start_watch(Conn, IPath),
-      data_changed(IPath, NewData)
-   end,
+%%    ets:delete(watcher_paths, Pid),
+   Inform = fun(IPath) -> maybe_rewatch(Conn, IPath) end,
    ok = lists:foreach(Inform, PathList).
 
 %% watch a node for changes on zookeeper
@@ -334,4 +327,18 @@ watch_path(ConnPid, Path, Watcher, WatchMessage) ->
       = ezk:get(ConnPid, Path, Watcher, WatchMessage),
 
    {ok, Data}.
+
+%% lookup a watchname for a ClientPid-Path combination
+%% returns atom(watchname) or list(Path)
+watch_name(Pid, Path) ->
+   Names = lets:read_list(client_path_name, Pid),
+   case proplists:get_value(Path, Names) of
+      undefined -> Path;
+      WatchName -> WatchName
+   end.
+
+update_client_path(Path, ClientPid, WatchName) ->
+   true = lets:insert_list(path_clients, Path, ClientPid),
+   true = lets:insert_list(client_paths, ClientPid, Path),
+   true = lets:insert_list(client_path_name, ClientPid, {Path, WatchName}).
 

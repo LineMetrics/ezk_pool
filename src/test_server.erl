@@ -122,8 +122,8 @@ handle_cast(_Request, State) ->
    {noreply, NewState :: #state{}} |
    {noreply, NewState :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term(), NewState :: #state{}}).
-handle_info({data_changed, Path, Data}, State) ->
-   ?LOG("****** WATCH Triggerd for Path: ~p, WatchData: ~p~n",[Path,Data]),
+handle_info({data_changed, WatchName, Path, Data}, State) ->
+   ?LOG("****** WATCH Triggerd for: ~p - Path: ~p, WatchData: ~p~n",[WatchName, Path,Data]),
    {noreply, State};
 handle_info(stop, State) ->
    ?LOG("******~~tStopped by message ;) ____|| Pid: ~p ~n",[self()]),
