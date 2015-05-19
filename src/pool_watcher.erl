@@ -88,9 +88,7 @@ handle_call(_Request, _From, State) ->
    {stop, Reason :: term(), NewState :: #state{}}).
 handle_cast({new_watch, EzkWorker}, State) ->
    ?LOG("new watch for worker: ~p, existing monitors: ~p",[EzkWorker, erlang:process_info(self(), monitors)]),
-   {monitors, Monitors} = erlang:process_info(self(), monitors),
-   Monitored = [M || {process, M} <- Monitors],
-   new_watch(lists:member(EzkWorker, Monitored), EzkWorker),
+   maybe_new_watch(EzkWorker),
    {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -113,8 +111,9 @@ handle_info({'DOWN', _MonitorRef, process, Object, _Info}=R, State) ->
    %% tell the next pool-worker process to takeover
    %% all the watch_paths from the process that has just gone down
    ok = poolboy:transaction(ezk_pooler, fun(EzkWorker) ->
-      gen_server:call(EzkWorker, {takeover, Object})
-   end),
+      ok = gen_server:call(EzkWorker, {takeover, Object}),
+      maybe_new_watch(EzkWorker)
+end),
    {noreply, State};
 handle_info(_Info, State) ->
    {noreply, State}.
@@ -152,6 +151,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+maybe_new_watch(EzkWorker) ->
+   {monitors, Monitors} = erlang:process_info(self(), monitors),
+   Monitored = [M || {process, M} <- Monitors],
+   new_watch(lists:member(EzkWorker, Monitored), EzkWorker).
 new_watch(false, WorkerPid) ->
    erlang:monitor(process, WorkerPid);
 new_watch(true, _) ->
