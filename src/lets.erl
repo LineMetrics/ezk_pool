@@ -42,29 +42,25 @@ read_list(TableName, Key) ->
 
 %%%%%%%%%%%% delete %%%%%%%%%%%%%
 %% delete entry (Value) from all lists referenced by KeyList-keys in the ets table TableName
+%% if the list is empty, we delete from the ets table
 delete_from_lists(TableName, KeyList, Value) ->
-%%    [delete_from_list(TableName, Key, Value) || Key <- KeyList],
-   F = fun(Key) ->
-      %% do delete_from_list then check for empty list to delete
-      delete_from_list(TableName, Key, Value),
-      case read_list(TableName, Key) of
-         [] -> %% delete whole entry
-            ets:delete(TableName, Key);
-         _ -> ok
-      end
-   end,
-   lists:foreach(F, KeyList)
+   [delete_from_list(TableName, Key, Value) || Key <- KeyList]
 .
+
 
 delete_from_list(TableName, Key, Value) ->
    delete_from_list(TableName, Key, read_list(TableName, Key), Value)
 .
-delete_from_list(_, _, [], _) ->
-   true;
+
+delete_from_list(TableName, Key, [], _) ->
+   ets:delete(TableName, Key);
+delete_from_list(TableName, Key, [Val], Val) ->
+   ets:delete(TableName, Key);
 delete_from_list(T, K, List, Val) when is_list(List) ->
    delete_from_list(lists:member(Val, List), T, K, List, Val)
 .
 delete_from_list(true, T, K, List, Val) ->
    ets:insert(T, {K, lists:delete(Val, List)});
 delete_from_list(false, _, _, _, _) ->
-   true.
+   true
+.
