@@ -112,7 +112,7 @@ handle_call({setup_get_watch, Path, WatchName}, {ClientPid, _Tag}, #state{conn =
          case is_process_alive(WatcherPid) of
             true  ->
                      update_client_path(Path, ClientPid, WatchName),
-                     {ok, Data0} = ezk:get(Conn, Path),
+                     {ok, {Data0,_R}} = ezk:get(Conn, Path),
                      ?LOG("living watcher found for path (~p)  no need to set watch~n",[Path]),
                      {Data0, State};
 
