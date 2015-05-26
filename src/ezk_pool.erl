@@ -57,7 +57,7 @@ get_watch(PoolName, Path, Watcher, WatchName) ->
 setup_get_watch(PoolName, Path, WatchName) ->
    poolboy:transaction(PoolName, fun(EzkWorker) ->
       gen_server:cast(pool_watcher, {new_watch, EzkWorker}),
-      gen_server:call(EzkWorker, {setup_get_watch, Path, WatchName})
+      gen_server:call(EzkWorker, {setup_get_watch, path(Path), WatchName})
    end).
 %% @doc Call any function from the ezk module with some Arguments
 %% provide the Arguments-List without the Connection Pid
