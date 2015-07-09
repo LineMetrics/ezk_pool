@@ -18,7 +18,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {t_sessions, t_key_sessions}).
+-record(state, {}).
 
 %%%===================================================================
 %%% API
@@ -54,15 +54,14 @@ start_link() ->
    {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term()} | ignore).
 init([]) ->
-   WPath = ets:new(watcher_paths, [set, public, named_table, {read_concurrency,true},{heir, self(), watcher_paths} ]),
-   PWatcher = ets:new(path_watcher, [set, public, named_table, {read_concurrency,true},{heir, self(), path_watcher} ]),
+   _WPath = ets:new(watcher_paths, [set, public, named_table, {read_concurrency,true},{heir, self(), watcher_paths} ]),
+   _PWatcher = ets:new(path_watcher, [set, public, named_table, {read_concurrency,true},{heir, self(), path_watcher} ]),
    _TWatches = ets:new(client_paths, [set, public, named_table, {read_concurrency,true},{heir, self(), client_paths} ]),
    _Client_path = ets:new(path_clients, [set, public, named_table, {read_concurrency,true},{heir, self(), path_clients} ]),
    _ClientPathWatchName = ets:new(client_path_name, [set, public, named_table, {read_concurrency,true},{heir, self(), client_path_name} ]),
+   _MonitoredPids = ets:new(monitored_pids, [set, public, named_table, {read_concurrency, true}, {heir, self(), monitored_pids}]),
 
-%%    ets:give_away(TZkPid, Pid, none),
-%%    ets:give_away(TSess, Pid, none),
-   {ok, #state{t_sessions = WPath, t_key_sessions = PWatcher}}.
+   {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private

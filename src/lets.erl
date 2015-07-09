@@ -4,17 +4,13 @@
 -author("Alexander Minichmair").
 
 %% API
--export([]).
--compile(export_all).
+-export([insert_list/3, read_list/2, delete_from_lists/3]).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper funcs for handling list values in ets key=value schema
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% the scheme for the ets tables in ezk_pool is: {Key, Value}
-%% Key is always a list (string) at the moment
-%% in tables: watcher_paths, client_paths, path_clients the value is a list
-%% and in table: path_watcher the value is the pool-workers pid
+%% handles unique entries of unordered list stored in ets with arbitrary key
 %%
 %% members of the value-lists are unique
 %%
@@ -42,7 +38,7 @@ read_list(TableName, Key) ->
 
 %%%%%%%%%%%% delete %%%%%%%%%%%%%
 %% delete entry (Value) from all lists referenced by KeyList-keys in the ets table TableName
-%% if the list is empty, we delete from the ets table
+%% if the list is empty, we delete the value-list from the ets table
 delete_from_lists(TableName, KeyList, Value) ->
    [delete_from_list(TableName, Key, Value) || Key <- KeyList]
 .

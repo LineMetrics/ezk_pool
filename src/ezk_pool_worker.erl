@@ -311,8 +311,6 @@ data_changed(Path, Clients, NewData) ->
 rewatch_all(Conn, Pid) ->
    PathList = lets:read_list(watcher_paths, Pid),
    ?LOG("rewatch all : ~p",[PathList]),
-   %% first delete old entry for watcher_paths
-%%    ets:delete(watcher_paths, Pid),
    Inform = fun(IPath) -> maybe_rewatch(Conn, IPath) end,
    ok = lists:foreach(Inform, PathList).
 

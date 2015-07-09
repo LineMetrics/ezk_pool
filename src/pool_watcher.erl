@@ -55,6 +55,11 @@ start_link() ->
    {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term()} | ignore).
 init([]) ->
+   %% maybe remonitor client pids
+   case lets:read_list(monitored_pids, ?MODULE) of
+      [] -> ok;
+      [_P|_R] = Pids -> [new_watch(false, Pid) || Pid <- Pids]
+   end,
    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -105,16 +110,21 @@ handle_cast({new_watch, EzkWorker}, State) ->
    {noreply, NewState :: #state{}} |
    {noreply, NewState :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term(), NewState :: #state{}}).
-handle_info({'DOWN', _MonitorRef, process, Object, _Info}=R, State) ->
+handle_info({'DOWN', _MonitorRef, process, WorkerPid, _Info}=R, State) ->
    %% start a new ezk connection
    ?LOG("got a 'DOWN' message from monitored process(ezk_pool_worker) ~p", [R]),
    %% tell the next pool-worker process to takeover
    %% all the watch_paths from the process that has just gone down
    ok = poolboy:transaction(ezk_pooler, fun(EzkWorker) ->
-      ok = gen_server:call(EzkWorker, {takeover, Object}),
+      ok = gen_server:call(EzkWorker, {takeover, WorkerPid}),
+      %% we can get a new worker or a worker already monitored by this process
       maybe_new_watch(EzkWorker)
-end),
+   end),
+   lets:delete_from_lists(monitored_pids, [?MODULE], WorkerPid),
+
    {noreply, State};
+handle_info(stop, State) ->
+   {stop, normal, State};
 handle_info(_Info, State) ->
    {noreply, State}.
 
@@ -156,6 +166,7 @@ maybe_new_watch(EzkWorker) ->
    Monitored = [M || {process, M} <- Monitors],
    new_watch(lists:member(EzkWorker, Monitored), EzkWorker).
 new_watch(false, WorkerPid) ->
+   lets:insert_list(monitored_pids, ?MODULE, WorkerPid),
    erlang:monitor(process, WorkerPid);
 new_watch(true, _) ->
    ok.

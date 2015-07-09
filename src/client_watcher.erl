@@ -55,6 +55,11 @@ start_link() ->
    {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term()} | ignore).
 init([]) ->
+   %% maybe remonitor client pids
+   case lets:read_list(monitored_pids, ?MODULE) of
+      [] -> ok;
+      [_P|_R] = Pids -> [new_watch(false, Pid) || Pid <- Pids]
+   end,
    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -118,6 +123,8 @@ handle_info({client_gone, ClientPid}, State) ->
    clean_pid(ClientPid),
 
    {noreply, State};
+handle_info(stop, State) ->
+   {stop, normal, State};
 handle_info(_Info, State) ->
    {noreply, State}.
 
@@ -156,7 +163,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 new_watch(false, ClientPid) ->
    ?LOG("monitor pid: ~p~n",[ClientPid]),
-   erlang:monitor(process, ClientPid);
+   lets:insert_list(monitored_pids, ?MODULE, ClientPid),
+   catch erlang:monitor(process, ClientPid);
 new_watch(true, _) ->
    ok.
 
@@ -169,4 +177,5 @@ clean_pid(ClientPid) ->
    %% delete clients paths
    ets:delete(client_paths, ClientPid),
    %% delete all entries for ClientPid from path_clients for all paths started with ClientPid
-   lets:delete_from_lists(path_clients, PathList, ClientPid).
+   lets:delete_from_lists(path_clients, PathList, ClientPid),
+   lets:delete_from_lists(monitored_pids, [?MODULE], ClientPid).
