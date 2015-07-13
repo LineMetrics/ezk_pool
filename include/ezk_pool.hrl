@@ -5,7 +5,7 @@
 -define(
 LOG,
 fun(Template, Values) when is_list(Values) ->
-   D = true,%not is_list(Values),
+   D = false,%not is_list(Values),
    if D == true  -> io:format("~n~n:::::::  ~p  ~p ~n" ++ Template, [self() | [?MODULE | Values]]);
       true        -> ok
    end
