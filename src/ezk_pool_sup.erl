@@ -42,11 +42,13 @@ init([]) ->
 
    Pools = application:get_all_env(ezk_pool),
    Pools1 = proplists:delete(included_applications, Pools),
-   PoolSpec = lists:map(
+   lists:foreach(
       fun ({PoolName, PoolArgs}) ->
-         ezk_pool:child_spec(PoolName, PoolArgs)
+         io:format("~ncreate pool: ~p with Args: ~p~n",[PoolName, PoolArgs]),
+         wpool:start_sup_pool(PoolName, PoolArgs)
+%%          ezk_pool:child_spec(PoolName, PoolArgs)
       end,
       Pools1
    ),
 
-   {ok, { {one_for_one, 15, 15}, Processes ++ PoolSpec} }.
+   {ok, { {one_for_one, 15, 15}, Processes} }.

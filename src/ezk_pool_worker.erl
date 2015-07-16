@@ -56,6 +56,7 @@ start_link(Args) ->
    {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term()} | ignore).
 init(_Args) ->
+%%    ?LOG("starting ezk_pool_worker",[]),
    EPid = init_conn(),
    Set = sets:new(),
    {ok, #state{conn = EPid, watches = Set}}.
@@ -102,8 +103,8 @@ handle_call({get_watch, Path, Watcher, WatchName}, _From, #state{conn = Conn} = 
 handle_call({setup_get_watch, Path, WatchName}, {ClientPid, _Tag}, #state{conn = Conn} = State) ->
 
    ?LOG("~nsetup_get_watch with ~p~n",[{Path, WatchName}]),
+   gen_server:cast(pool_watcher, {new_watch, self()}),
    gen_server:cast(client_watcher, {new_watch, ClientPid}),
-
    %% check for valid watcher process
    {Data, NewState} =
    case ets:lookup(path_watcher, Path) of

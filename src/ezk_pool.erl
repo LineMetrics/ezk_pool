@@ -12,7 +12,7 @@
 start() ->
    application:start(crypto),
    application:start(ezk),
-   application:start(poolboy),
+   application:start(worker_pool),
    ok = application:start(ezk_pool).
 
 
@@ -28,43 +28,51 @@ child_spec(PoolName, PoolArgs) ->
 
 %%%%%%%%%% worker
 set(PoolName, Path, Data) when is_binary(Data) ->
-   poolboy:transaction(PoolName, fun(EzkWorker) ->
-      gen_server:call(EzkWorker, {write_data, path(Path), Data})
-   end).
+   wpool:call(PoolName, {write_data, path(Path), Data}, next_worker, infinity).
+%%    poolboy:transaction(PoolName, fun(EzkWorker) ->
+%%       gen_server:call(EzkWorker, {write_data, path(Path), Data})
+%%    end).
 
 delete(PoolName, Path) ->
-   poolboy:transaction(PoolName, fun(EzkWorker) ->
-      gen_server:call(EzkWorker, {delete_node, path(Path)})
-   end).
+   wpool:call(PoolName, {delete_node, path(Path)}, next_worker, infinity).
+%%    poolboy:transaction(PoolName, fun(EzkWorker) ->
+%%       gen_server:call(EzkWorker, {delete_node, path(Path)})
+%%    end).
 
 delete_all(PoolName, Path) ->
-   poolboy:transaction(PoolName, fun(EzkWorker) ->
-      gen_server:call(EzkWorker, {delete_node_all, path(Path)})
-   end).
+   wpool:call(PoolName, {delete_node_all, path(Path)}, next_worker, infinity).
+%%    poolboy:transaction(PoolName, fun(EzkWorker) ->
+%%       gen_server:call(EzkWorker, {delete_node_all, path(Path)})
+%%    end).
 
 get(PoolName, Path) ->
-   poolboy:transaction(PoolName, fun(EzkWorker) ->
-      gen_server:call(EzkWorker, {get, path(Path)})
-   end).
+   wpool:call(PoolName, {get, path(Path)}, next_worker, infinity).
+%%    poolboy:transaction(PoolName, fun(EzkWorker) ->
+%%       gen_server:call(EzkWorker, {get, path(Path)})
+%%    end).
 
 get_watch(PoolName, Path, WatchName) ->
    get_watch(PoolName, Path, self(), WatchName).
 
 get_watch(PoolName, Path, Watcher, WatchName) ->
-   poolboy:transaction(PoolName, fun(EzkWorker) ->
-      gen_server:call(EzkWorker, {get_watch, path(Path), Watcher, WatchName})
-   end).
+   wpool:call(PoolName, {get_watch, path(Path), Watcher, WatchName}, next_worker, infinity).
+%%    poolboy:transaction(PoolName, fun(EzkWorker) ->
+%%       gen_server:call(EzkWorker, {get_watch, path(Path), Watcher, WatchName})
+%%    end).
 setup_get_watch(PoolName, Path, WatchName) ->
-   poolboy:transaction(PoolName, fun(EzkWorker) ->
-      gen_server:cast(pool_watcher, {new_watch, EzkWorker}),
-      gen_server:call(EzkWorker, {setup_get_watch, path(Path), WatchName})
-   end).
+   wpool:call(PoolName, {setup_get_watch, path(Path), WatchName}, next_worker, infinity).
+
+%%    poolboy:transaction(PoolName, fun(EzkWorker) ->
+%%       gen_server:cast(pool_watcher, {new_watch, EzkWorker}),
+%%       gen_server:call(EzkWorker, {setup_get_watch, path(Path), WatchName})
+%%    end).
 %% @doc Call any function from the ezk module with some Arguments
 %% provide the Arguments-List without the Connection Pid
 call(PoolName, FunctionName, Args) when is_atom(FunctionName) andalso is_list(Args) ->
-   poolboy:transaction(PoolName, fun(EzkWorker) ->
-      gen_server:call(EzkWorker, {ezk, FunctionName, Args})
-   end).
+   wpool:call(PoolName, {ezk, FunctionName, Args}, next_worker, infinity).
+%%    poolboy:transaction(PoolName, fun(EzkWorker) ->
+%%       gen_server:call(EzkWorker, {ezk, FunctionName, Args})
+%%    end).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% internal                                              %%%%%%

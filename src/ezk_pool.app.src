@@ -5,7 +5,8 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  worker_pool
                  ]},
   {mod, { ezk_pool_app, []}},
   {env, []}
