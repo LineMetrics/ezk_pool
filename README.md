@@ -1,6 +1,6 @@
 # ezk_pool
 
-ezk + poolboy
+ezk + worker_pool
 
 Pooled Zookeeper-Connections for Erlang
 
