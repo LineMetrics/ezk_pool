@@ -8,3 +8,5 @@ Pooled Zookeeper-Connections for Erlang
 added handling of  zk-watches:
 
 a big number of zookeeper watches held by a number of worker-processes
+
+switched from poolboy to inaka/worker_pool
