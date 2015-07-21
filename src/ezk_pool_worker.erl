@@ -129,6 +129,7 @@ handle_call({setup_get_watch, Path, WatchName}, {ClientPid, _Tag}, #state{conn =
 handle_call({takeover, OldPid}, _From, State) ->
    ?LOG("~nTAKEOVER ALL WATCHES FROM PID: ~p to pid: ~p~n",[OldPid, self()]),
    rewatch_all(State#state.conn, OldPid),
+   gen_server:cast(pool_watcher, {new_watch, self()}),
    {reply, ok, State};
 handle_call({ezk, EzkFun, Args}, _From, #state{conn = Conn} = State) ->
    Res = erlang:apply(ezk, EzkFun, [Conn|Args]),

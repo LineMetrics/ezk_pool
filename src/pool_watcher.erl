@@ -7,7 +7,7 @@
 -include("../include/ezk_pool.hrl").
 
 %% API
--export([start_link/0]).
+-export([start_link/0, set_pool_name/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -19,11 +19,15 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {}).
+-record(state, {poolname}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+
+set_pool_name(NewName) ->
+   gen_server:call(?MODULE, {poolname, NewName}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -77,6 +81,8 @@ init([]) ->
    {noreply, NewState :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
    {stop, Reason :: term(), NewState :: #state{}}).
+handle_call({poolname, NewName}, _From, State) ->
+   {reply, ok, State#state{poolname = NewName}};
 handle_call(_Request, _From, State) ->
    {reply, ok, State}.
 
@@ -110,16 +116,17 @@ handle_cast({new_watch, EzkWorker}, State) ->
    {noreply, NewState :: #state{}} |
    {noreply, NewState :: #state{}, timeout() | hibernate} |
    {stop, Reason :: term(), NewState :: #state{}}).
-handle_info({'DOWN', _MonitorRef, process, WorkerPid, _Info}=R, State) ->
+handle_info({'DOWN', _MonitorRef, process, WorkerPid, _Info}=R, #state{poolname = PoolName}=State) ->
    %% start a new ezk connection
    ?LOG("got a 'DOWN' message from monitored process(ezk_pool_worker) ~p", [R]),
    %% tell the next pool-worker process to takeover
    %% all the watch_paths from the process that has just gone down
-   ok = poolboy:transaction(ezk_pooler, fun(EzkWorker) ->
-      ok = gen_server:call(EzkWorker, {takeover, WorkerPid}),
-      %% we can get a new worker or a worker already monitored by this process
-      maybe_new_watch(EzkWorker)
-   end),
+%%    ok = poolboy:transaction(ezk_pooler, fun(EzkWorker) ->
+%%       ok = gen_server:call(EzkWorker, {takeover, WorkerPid})
+%%    end),
+
+   wpool:call(PoolName, {takeover, WorkerPid}, next_worker, infinity),
+
    lets:delete_from_lists(monitored_pids, [?MODULE], WorkerPid),
 
    {noreply, State};

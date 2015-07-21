@@ -3,7 +3,7 @@
 -author("Alexander Minichmair").
 
 %% API
--export([new/2, child_spec/2, setup_get_watch/3]).
+-export([setup_get_watch/3]).
 -export([set/3, delete/2, delete_all/2, get/2, get_watch/3, get_watch/4, call/3]).
 
 -export([start/0]).
@@ -18,13 +18,6 @@ start() ->
 
 %%%%%%%%%%%%%%%%%%% API %%%%%%%%%%%%%%%%%%%
 %%%% pool handling
-new(PoolName, PoolBoyOptions) ->
-   supervisor:start_child(ezk_pool_sup, child_spec(PoolName, PoolBoyOptions)).
-
-child_spec(PoolName, PoolArgs) ->
-   PoolArgs1 = [{strategy, fifo}, {name, {local, PoolName}}, {worker_module, ezk_pool_worker} | PoolArgs],
-   poolboy:child_spec(PoolName, PoolArgs1)
-.
 
 %%%%%%%%%% worker
 set(PoolName, Path, Data) when is_binary(Data) ->
@@ -60,6 +53,7 @@ get_watch(PoolName, Path, Watcher, WatchName) ->
 %%       gen_server:call(EzkWorker, {get_watch, path(Path), Watcher, WatchName})
 %%    end).
 setup_get_watch(PoolName, Path, WatchName) ->
+   pool_watcher:set_pool_name(PoolName),
    wpool:call(PoolName, {setup_get_watch, path(Path), WatchName}, next_worker, infinity).
 
 %%    poolboy:transaction(PoolName, fun(EzkWorker) ->
