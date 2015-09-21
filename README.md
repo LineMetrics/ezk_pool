@@ -7,7 +7,7 @@
 
 
 
-ezk + worker_pool
+### ezk + worker_pool
 
 Pooled Zookeeper-Connections for Erlang
 
