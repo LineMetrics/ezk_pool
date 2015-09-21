@@ -1,8 +1,10 @@
 # ezk_pool
 
-##Status : deprecated
+##Status : deprecated !
   Why ? Would need a special pool-implementation for working efficiently with zookeeper-watches.
   Do not use for production
+
+
 
 
 ezk + worker_pool
