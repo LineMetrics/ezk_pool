@@ -10,10 +10,7 @@
 
 %% start the app
 start() ->
-   application:start(crypto),
-   application:start(ezk),
-   application:start(worker_pool),
-   ok = application:start(ezk_pool).
+   application:ensure_all_started(?MODULE, permanent).
 
 
 %%%%%%%%%%%%%%%%%%% API %%%%%%%%%%%%%%%%%%%

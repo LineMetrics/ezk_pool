@@ -6,6 +6,8 @@
   {applications, [
                   kernel,
                   stdlib,
+                  crypto,
+                  ezk,
                   worker_pool
                  ]},
   {mod, { ezk_pool_app, []}},
